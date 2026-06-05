@@ -12,16 +12,21 @@ module.exports = class NimbleStatblockPlugin extends Plugin {
 					throw new Error("Missing monster id.");
 				}
 
-				const jsonUrl = `https://nimble.monster/monsters/${monsterId}/nimbrew.json`;
+				const jsonUrl = `https://nimble.nexus/api/monsters/${encodeURIComponent(monsterId)}`;
 				const nexusUrl = `https://nimble.nexus/monsters/${monsterId}`;
 
-				const response = await fetch(jsonUrl);
+				const response = await fetch(jsonUrl, {
+					headers: {
+						Accept: "application/vnd.api+json"
+					}
+				});
 
 				if (!response.ok) {
 					throw new Error(`Could not fetch monster JSON: ${response.status}`);
 				}
 
-				const data = await response.json();
+				const payload = await response.json();
+				const data = normalizeMonsterPayload(payload);
 
 				renderStatblock(data, el, nexusUrl);
 			} catch (err) {
@@ -32,6 +37,130 @@ module.exports = class NimbleStatblockPlugin extends Plugin {
 		});
 	}
 };
+
+function normalizeMonsterPayload(payload) {
+	if (!payload || !payload.data || !payload.data.attributes) {
+		return payload;
+	}
+
+	const attributes = payload.data.attributes;
+	const actions = normalizeNamedDescriptions(attributes.actions);
+	const passives = [
+		...normalizeNamedDescriptions(attributes.abilities),
+		...normalizeNamedDescriptions(attributes.effects)
+	];
+
+	return {
+		name: attributes.name,
+		CR: formatMonsterType(attributes),
+		hp: attributes.hp,
+		armor: formatArmor(attributes.armor),
+		saves: formatSaves(attributes.saves),
+		speed: formatMovement(attributes.movement),
+		passives,
+		actions: attributes.actionsInstructions
+			? [{ type: "multi", name: attributes.actionsInstructions, actions }]
+			: actions,
+		bloodied: getDescription(attributes.bloodied),
+		laststand: getDescription(attributes.lastStand),
+		theme: {}
+	};
+}
+
+function normalizeNamedDescriptions(items) {
+	if (!Array.isArray(items)) {
+		return [];
+	}
+
+	return items
+		.map((item) => ({
+			name: item && item.name ? item.name : "",
+			desc: getDescription(item)
+		}))
+		.filter((item) => item.name || item.desc);
+}
+
+function getDescription(value) {
+	if (!value) {
+		return "";
+	}
+
+	if (typeof value === "string") {
+		return value;
+	}
+
+	return value.description || value.desc || "";
+}
+
+function formatMonsterType(attributes) {
+	const level = attributes.level === 0 || attributes.level
+		? `Lvl ${attributes.level}`
+		: "";
+	const sizeAndKind = [attributes.size, attributes.kind]
+		.filter(Boolean)
+		.join(" ");
+	const subtype = attributes.subtype && attributes.subtype !== "standard"
+		? attributes.subtype
+		: attributes.legendary
+			? "legendary"
+			: attributes.minion
+				? "minion"
+				: "";
+
+	return [level, sizeAndKind, subtype]
+		.filter(Boolean)
+		.join(" - ");
+}
+
+function formatArmor(armor) {
+	if (!armor || armor === "none") {
+		return "";
+	}
+
+	return titleCase(String(armor).replace(/_/g, " "));
+}
+
+function formatMovement(movement) {
+	if (!Array.isArray(movement) || !movement.length) {
+		return "";
+	}
+
+	return movement
+		.map((entry) => {
+			if (!entry || entry.speed === undefined || entry.speed === null) {
+				return "";
+			}
+
+			return entry.mode ? `${entry.mode} ${entry.speed}` : String(entry.speed);
+		})
+		.filter(Boolean)
+		.join(", ");
+}
+
+function formatSaves(saves) {
+	if (!saves || typeof saves !== "object") {
+		return "";
+	}
+
+	return ["str", "dex", "wil"]
+		.filter((key) => saves[key] !== undefined && saves[key] !== null)
+		.map((key) => `${key.toUpperCase()} ${formatModifier(saves[key])}`)
+		.join(", ");
+}
+
+function formatModifier(value) {
+	const number = Number(value);
+
+	if (!Number.isFinite(number)) {
+		return String(value);
+	}
+
+	return number > 0 ? `+${number}` : String(number);
+}
+
+function titleCase(value) {
+	return value.replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
 
 function renderStatblock(data, el, nexusUrl) {
 	const theme = data.theme || {};
