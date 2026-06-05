@@ -1,7 +1,7 @@
 {
   "id": "nimble-statblock",
   "name": "Nimble Statblock",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "minAppVersion": "1.12.6",
   "description": "Render Nimble 2-style monster statblocks from Nimble Nexus monster IDs.",
   "author": "@matbonfanti",
