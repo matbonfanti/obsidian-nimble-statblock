@@ -221,6 +221,25 @@
 	margin: 3px 0;
 }
 
+.nimble-nexus-attribution {
+	margin-top: 10px;
+	padding-top: 6px;
+	border-top: 1px solid rgba(0, 0, 0, 0.3);
+
+	font-size: 11px;
+	line-height: 1.25;
+	color: rgba(0, 0, 0, 0.72);
+}
+
+.nimble-nexus-attribution a,
+.nimble-nexus-attribution a:visited,
+.nimble-nexus-attribution a:hover,
+.nimble-nexus-attribution a:active {
+	color: rgba(0, 0, 0, 0.82) !important;
+	font-weight: 700;
+	text-decoration: none !important;
+}
+
 .nimble-nexus-card strong {
 	font-weight: 900;
 	color: #000;
