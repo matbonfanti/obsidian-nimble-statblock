@@ -15,18 +15,9 @@ module.exports = class NimbleStatblockPlugin extends Plugin {
 				const jsonUrl = `https://nimble.nexus/api/monsters/${encodeURIComponent(monsterId)}`;
 				const nexusUrl = `https://nimble.nexus/monsters/${monsterId}`;
 
-				const response = await fetch(jsonUrl, {
-					headers: {
-						Accept: "application/vnd.api+json"
-					}
-				});
-
-				if (!response.ok) {
-					throw new Error(`Could not fetch monster JSON: ${response.status}`);
-				}
-
-				const payload = await response.json();
-				const data = normalizeMonsterPayload(payload);
+				const payload = await fetchJsonApi(jsonUrl, "Could not fetch monster JSON");
+				const creatorName = await fetchCreatorDisplayName(payload);
+				const data = normalizeMonsterPayload(payload, creatorName);
 
 				renderStatblock(data, el, nexusUrl);
 			} catch (err) {
@@ -38,7 +29,63 @@ module.exports = class NimbleStatblockPlugin extends Plugin {
 	}
 };
 
-function normalizeMonsterPayload(payload) {
+async function fetchJsonApi(url, errorMessage) {
+	const response = await fetch(url, {
+		headers: {
+			Accept: "application/vnd.api+json"
+		}
+	});
+
+	if (!response.ok) {
+		throw new Error(`${errorMessage}: ${response.status}`);
+	}
+
+	return response.json();
+}
+
+async function fetchCreatorDisplayName(monsterPayload) {
+	const creatorId = getRelationshipId(monsterPayload, "creator");
+
+	if (!creatorId) {
+		return "";
+	}
+
+	try {
+		const creatorUrl = `https://nimble.nexus/api/users/${encodeURIComponent(creatorId)}`;
+		const creatorPayload = await fetchJsonApi(creatorUrl, "Could not fetch creator JSON");
+
+		return getUserDisplayName(creatorPayload);
+	} catch (err) {
+		console.warn("Nimble Statblock: could not fetch creator", err);
+		return "";
+	}
+}
+
+function getRelationshipId(payload, relationshipName) {
+	if (
+		!payload ||
+		!payload.data ||
+		!payload.data.relationships ||
+		!payload.data.relationships[relationshipName] ||
+		!payload.data.relationships[relationshipName].data
+	) {
+		return "";
+	}
+
+	return payload.data.relationships[relationshipName].data.id || "";
+}
+
+function getUserDisplayName(payload) {
+	if (!payload || !payload.data || !payload.data.attributes) {
+		return "";
+	}
+
+	const attributes = payload.data.attributes;
+
+	return attributes.displayName || attributes.username || "";
+}
+
+function normalizeMonsterPayload(payload, creatorName) {
 	if (!payload || !payload.data || !payload.data.attributes) {
 		return payload;
 	}
@@ -63,6 +110,7 @@ function normalizeMonsterPayload(payload) {
 			: actions,
 		bloodied: getDescription(attributes.bloodied),
 		laststand: getDescription(attributes.lastStand),
+		creatorName,
 		theme: {}
 	};
 }
@@ -244,6 +292,8 @@ function renderStatblock(data, el, nexusUrl) {
 			row.appendText(data.laststand);
 		}
 	}
+
+	renderAttribution(root, data, nexusUrl);
 }
 
 function addMeta(parent, type, value) {
@@ -261,4 +311,23 @@ function renderAction(parent, action) {
 	const text = row.createSpan({ cls: "nimble-nexus-action-text" });
 	text.createEl("strong", { text: action.name || "" });
 	text.appendText(" " + (action.desc || ""));
+}
+
+function renderAttribution(parent, data, nexusUrl) {
+	const attribution = parent.createDiv({ cls: "nimble-nexus-attribution" });
+
+	attribution.appendText("Statblock data provided by ");
+
+	const link = attribution.createEl("a", { text: "Nimble Nexus" });
+	link.href = nexusUrl;
+	link.target = "_blank";
+	link.rel = "noopener noreferrer";
+
+	attribution.appendText(". ");
+
+	if (data.creatorName) {
+		attribution.appendText(`Created by ${data.creatorName}.`);
+	} else {
+		attribution.appendText("Creator unavailable.");
+	}
 }
